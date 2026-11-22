@@ -15,7 +15,7 @@ import java.util.concurrent.Executor
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-interface HostResolver {
+fun interface HostResolver {
     suspend fun resolve(host: String): List<InetAddress>
 }
 

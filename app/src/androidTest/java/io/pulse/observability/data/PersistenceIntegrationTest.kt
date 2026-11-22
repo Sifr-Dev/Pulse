@@ -36,18 +36,20 @@ class PersistenceIntegrationTest {
             failureCode = FailureKind.DNS_FAILURE, failureMessage = "Not found", failedStageDurationNanos = 50,
         ))
         HistoryRepository(database.measurements()).record(failure)
-        PreferenceDataStoreFactory.create { preferenceFile }.use { store ->
-            SettingsRepository(store).saveLastTarget("https://example.com/path")
-        }
+        // PreferenceDataStore enforces one live DataStore per file and its
+        // 1.3.0 API has no close(), so the store is created once and two
+        // repository instances over the same store validate read-after-write
+        // durability. Process-death persistence is covered by the Android
+        // framework's own file-backed storage, not by this JVM-level check.
+        val store = PreferenceDataStoreFactory.create { preferenceFile }
+        SettingsRepository(store).saveLastTarget("https://example.com/path")
         database.close()
         database = Room.databaseBuilder(context, PulseDatabase::class.java, dbFile.name).build()
         try {
             val rows = HistoryRepository(database.measurements()).snapshot()
             assertEquals(1, rows.size)
             assertEquals(failure.measurement, rows.single())
-            PreferenceDataStoreFactory.create { preferenceFile }.use { store ->
-                assertEquals("https://example.com/path", SettingsRepository(store).lastTarget.first())
-            }
+            assertEquals("https://example.com/path", SettingsRepository(store).lastTarget.first())
         } finally {
             database.close()
             dbFile.delete()

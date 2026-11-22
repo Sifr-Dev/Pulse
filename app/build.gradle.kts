@@ -21,6 +21,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -43,6 +44,12 @@ android {
         abortOnError = true
         warningsAsErrors = true
         disable += "UnusedResources"
+        // External freshness advisories: real upgrades are deliberate toolchain
+        // changes, not per-commit fixes. This build pins the SDK/emulator pair
+        // (platform 36) and AGP/Kotlin that the verification matrix runs on.
+        // NotShrinkingResources, dependency-locator and code-level checks stay
+        // enforced as errors.
+        disable += setOf("OldTargetApi", "NewerVersionAvailable", "GradleDependency", "AndroidGradlePluginVersion")
     }
 }
 
@@ -71,7 +78,6 @@ configurations.configureEach {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
-    implementation("androidx.activity:activity:1.13.0")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
@@ -89,12 +95,12 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     testImplementation(libs.junit)
-    testImplementation("org.json:json:20251224")
+    testImplementation(libs.json)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation("org.bouncycastle:bcpkix-jdk18on:1.83")
+    testImplementation(libs.bouncycastle.bcpkix)
 
     androidTestImplementation(libs.androidx.test.junit)
-    androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.83")
+    androidTestImplementation(libs.bouncycastle.bcpkix)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(libs.androidx.test.core)
