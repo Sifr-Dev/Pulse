@@ -54,12 +54,29 @@ Two defects were found by these tests and fixed rather than muted:
 Result: `BUILD SUCCESSFUL`; `app/build/outputs/apk/debug/app-debug.apk`
 (19,963,046 bytes) with `output-metadata.json`.
 
-## Not yet verified (explicit)
+## Instrumented tests (API 36 x86_64 emulator, local KVM)
 
-- Instrumented `connectedDebugAndroidTest` on an emulator or physical device
-  has **not** been re-run in this session; the CI workflow runs it on API 36.
-  The earlier run in the previous session ended in a build failure that is now
-  fixed, so a new run is required before claiming device coverage.
+```sh
+./gradlew :app:connectedDebugAndroidTest
+```
+
+Result: `BUILD SUCCESSFUL`, 16 tests, 0 failures, 0 errors.
+
+The suite runs on a booted API 36 emulator and covers Room persistence,
+atomic retention and clear, the real probe against local TCP/TLS servers, the
+platform resolver, and Compose navigation/state rendering. Three failures were
+found on the first run and fixed:
+
+1. Room assigns a surrogate id; the persistence round-trip assertion now
+   compares the measured payload with the persisted id.
+2. Android's `DnsResolver` is a network resolver and does not serve
+   `/etc/hosts`, so `localhost` is NXDOMAIN on the emulator. The resolver test
+   now asserts numeric loopback handling and typed failure for a guaranteed
+   non-existent `*.invalid` name.
+3. `createComposeRule` allows one `setContent` per test; the success and
+   failure rendering assertions were split into two tests.
+
+## Not yet verified (explicit)
 - Release signing: no release key was provided. Release artifacts require the
   owner's keystore; no signing identity is fabricated.
 - Macrobenchmark and Baseline Profile modules are not part of this milestone.

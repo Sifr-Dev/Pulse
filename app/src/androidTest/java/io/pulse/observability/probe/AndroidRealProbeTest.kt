@@ -17,9 +17,24 @@ import java.net.ServerSocket
 
 @RunWith(AndroidJUnit4::class)
 class AndroidRealProbeTest {
-    @Test fun systemResolverUsesActualPlatformDns() = runBlocking {
-        val addresses = SystemResolver().resolve("localhost")
-        assertTrue(addresses.any { it.isLoopbackAddress })
+    @Test fun numericLoopbackNeedsNoDnsTransaction() = runBlocking {
+        // Android's DnsResolver is a network resolver: it does not read
+        // /etc/hosts, so "localhost" is NXDOMAIN on an emulator. A numeric
+        // address is resolved locally and must round-trip exactly.
+        val addresses = SystemResolver().resolve("127.0.0.1")
+        assertEquals(listOf(InetAddress.getByName("127.0.0.1")), addresses)
+    }
+
+    @Test fun unknownHostnameFailsTypedNotHung() = runBlocking {
+        // .invalid is guaranteed not to exist (RFC 2606). The probe must
+        // surface the resolver error instead of fabricating an address.
+        var failed = false
+        try {
+            SystemResolver().resolve("pulse-does-not-exist.invalid")
+        } catch (_: java.net.UnknownHostException) {
+            failed = true
+        }
+        assertTrue(failed)
     }
 
     @Test fun localSocketHasNoFabricatedTlsForHttp() = runBlocking {

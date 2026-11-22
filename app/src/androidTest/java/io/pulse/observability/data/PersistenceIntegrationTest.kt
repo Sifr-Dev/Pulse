@@ -48,7 +48,8 @@ class PersistenceIntegrationTest {
         try {
             val rows = HistoryRepository(database.measurements()).snapshot()
             assertEquals(1, rows.size)
-            assertEquals(failure.measurement, rows.single())
+            // Room assigns the surrogate id; the measured payload must round-trip.
+            assertEquals(failure.measurement.copy(id = rows.single().id), rows.single())
             assertEquals("https://example.com/path", SettingsRepository(store).lastTarget.first())
         } finally {
             database.close()

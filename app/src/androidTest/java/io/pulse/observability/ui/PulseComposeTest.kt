@@ -46,7 +46,7 @@ class PulseComposeTest {
         compose.onNodeWithTag("run_probe").assertDoesNotExist()
     }
 
-    @Test fun realMeasurementStateRendersEachCompletedStageAndTypedFailure() {
+    @Test fun realMeasurementStateRendersEachCompletedStage() {
         val success = Measurement(
             id = 1, target = "https://example.com/", startedAtEpochMillis = 0,
             outcome = Outcome.SUCCESS, totalNanos = 50_000_000,
@@ -63,9 +63,15 @@ class PulseComposeTest {
         compose.onNodeWithText("https://example.com/").assertExists()
         compose.onNodeWithText("http_headers").assertExists()
         compose.onNodeWithText("123").assertExists()
+    }
 
-        val failure = success.copy(
-            outcome = Outcome.FAILURE, responseCode = null, failureStage = StageName.DNS,
+    @Test fun typedFailureIsRenderedWithItsStage() {
+        // setContent may be called once per ComposeTestRule invocation, so the
+        // failure case lives in its own test rather than a second setContent.
+        val failure = Measurement(
+            id = 2, target = "https://example.com/", startedAtEpochMillis = 0,
+            outcome = Outcome.FAILURE, totalNanos = 50_000_000, stages = emptyList(),
+            responseCode = null, failureStage = StageName.DNS,
             failureCode = FailureKind.DNS_FAILURE, failureMessage = "The system resolver could not resolve this hostname.",
         )
         compose.setContent { MeasureScreen(PulseUiState(latest = failure), {}, {}, {}) }
