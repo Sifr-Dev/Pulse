@@ -76,6 +76,31 @@ found on the first run and fixed:
 3. `createComposeRule` allows one `setContent` per test; the success and
    failure rendering assertions were split into two tests.
 
+## Release build (0.1.0)
+
+```sh
+./gradlew :app:assembleRelease :app:bundleRelease
+```
+
+Result: `BUILD SUCCESSFUL`. R8 minification with resource shrinking; signed
+APK (1,479,542 bytes) and AAB produced. `apksigner verify` passes strictly;
+signer certificate SHA-256
+`81228a3437dce094721b78842a2f373ed718219c27c5b8a04f9b05b5d9d3c8bf`.
+The keystore is a generated project-local key (PKCS12, RSA-4096); the build
+reads it through a gitignored `keystore.properties` and produces an unsigned
+artifact when it is absent, so CI never needs the secret.
+
+### On-device release validation
+
+The signed release APK was installed on the API 36 emulator
+(`adb install -r`, `Success`), launched (`pidof` alive, no FATAL in logcat),
+and driven through one real measurement against a local HTTP server bound on
+the host and reached via the emulator alias `10.0.2.2:8901`. The UI rendered
+`HTTP 200`, total 1028.6 ms, with per-stage timings `dns 0.1 ms`,
+`tcp 527.6 ms`, `http_headers 499.6 ms`, `http_body 0.4 ms` and the resolved
+address. This is a real DNS/TCP/HTTP measurement path executed by the release
+binary, not sample data.
+
 ## Not yet verified (explicit)
 - Release signing: no release key was provided. Release artifacts require the
   owner's keystore; no signing identity is fabricated.
