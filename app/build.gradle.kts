@@ -31,6 +31,19 @@ android {
         buildConfig = true
     }
 
+    packaging {
+        // Bouncy Castle's three test jars each ship the same license texts.
+        // Merge them rather than duplicating identical legal notices.
+        resources {
+            excludes += setOf(
+                "META-INF/LICENSE.md",
+                "META-INF/LICENSE",
+                "META-INF/NOTICE.md",
+                "META-INF/NOTICE",
+            )
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
