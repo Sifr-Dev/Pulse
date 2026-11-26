@@ -50,6 +50,8 @@ class NetworkProbe(
         var tlsProtocol: String? = null
         var tlsCipher: String? = null
         var firstByteAt: Long? = null
+        var interimResponses: Int? = null
+        var redirect: Redirect? = null
         var currentStage = StageName.DNS
         val activeSocket = java.util.concurrent.atomic.AtomicReference<Socket?>(null)
         fun closeActiveSocket() {
@@ -100,9 +102,22 @@ class NetworkProbe(
                     val output = BufferedOutputStream(socket.getOutputStream())
                     writeRequest(output, target)
                     val input = BufferedInputStream(socket.getInputStream())
-                    response = stage(timings, StageName.HTTP_HEADERS, FailureKind.HTTP_FAILURE, FailureKind.HTTP_TIMEOUT) {
-                        readResponseHead(input, config) { firstByteAt = clock.nowNanos() - started }
+                    val head = stage(timings, StageName.HTTP_HEADERS, FailureKind.HTTP_FAILURE, FailureKind.HTTP_TIMEOUT) {
+                        // Interim 1xx responses are skipped until a final status arrives. The header
+                        // stage timing covers every interim exchange, which is the wait the user
+                        // actually experienced, while only the final status is recorded.
+                        readFinalResponseHead(input, config) {
+                            if (firstByteAt == null) firstByteAt = clock.nowNanos() - started
+                        }
                     }
+                    response = head.response
+                    interimResponses = head.interimCount
+                    // Classified before the body read so a body timeout on a 3xx still reports
+                    // where the server pointed instead of losing the boundary on failure. A
+                    // Location header on a non-redirect status is not a redirect and is ignored.
+                    redirect = head.location
+                        ?.takeIf { RedirectClassifier.isRedirect(head.response.code) }
+                        ?.let { RedirectClassifier.classify(target, it) }
                     val readResponse = response!!
                     currentStage = StageName.HTTP_BODY
                     val bytes = stage(timings, StageName.HTTP_BODY, FailureKind.BODY_FAILURE, FailureKind.BODY_TIMEOUT) {
@@ -111,7 +126,7 @@ class NetworkProbe(
                     }
                     complete(
                         target, wallClock, started, timings, address, readResponse,
-                        tlsProtocol, tlsCipher, bytes, firstByteAt,
+                        tlsProtocol, tlsCipher, bytes, firstByteAt, interimResponses, redirect,
                     )
                 } finally {
                     closeActiveSocket()
@@ -122,16 +137,18 @@ class NetworkProbe(
         } catch (error: TimeoutCancellationException) {
             cancellationRegistration.dispose()
             failed(target, wallClock, started, timings, address, response, tlsProtocol, tlsCipher, firstByteAt,
-                StageFailure(FailureKind.TOTAL_TIMEOUT, currentStage, clock.nowNanos() - started, error))
+                interimResponses, redirect, StageFailure(FailureKind.TOTAL_TIMEOUT, currentStage, clock.nowNanos() - started, error))
         } catch (error: CancellationException) {
             cancellationRegistration.dispose()
             throw error
         } catch (error: StageFailure) {
             cancellationRegistration.dispose()
-            failed(target, wallClock, started, timings, address, response, tlsProtocol, tlsCipher, firstByteAt, error)
+            failed(target, wallClock, started, timings, address, response, tlsProtocol, tlsCipher, firstByteAt,
+                interimResponses, redirect, error)
         } catch (error: Exception) {
             cancellationRegistration.dispose()
             failed(target, wallClock, started, timings, address, response, tlsProtocol, tlsCipher, firstByteAt,
+                interimResponses, redirect,
                 StageFailure(FailureKind.HTTP_FAILURE, StageName.HTTP_HEADERS, clock.nowNanos() - started, error))
         }
         }
@@ -187,6 +204,8 @@ class NetworkProbe(
         cipher: String?,
         bodyBytes: Long,
         firstByte: Long?,
+        interimCount: Int?,
+        redirect: Redirect?,
     ): ProbeResult.Success = ProbeResult.Success(Measurement(
         target = target.normalized,
         startedAtEpochMillis = wallClock,
@@ -200,6 +219,9 @@ class NetworkProbe(
         tlsCipherSuite = cipher,
         bodyBytes = bodyBytes,
         firstResponseByteNanos = firstByte,
+        interimResponses = interimCount,
+        redirectTarget = redirect?.target,
+        redirectKind = redirect?.kind,
     ))
 
     private fun failed(
@@ -212,6 +234,8 @@ class NetworkProbe(
         protocol: String?,
         cipher: String?,
         firstByte: Long?,
+        interimCount: Int?,
+        redirect: Redirect?,
         failure: StageFailure,
     ): ProbeResult.Failure = ProbeResult.Failure(Measurement(
         target = target.normalized,
@@ -225,6 +249,9 @@ class NetworkProbe(
         tlsProtocol = protocol,
         tlsCipherSuite = cipher,
         firstResponseByteNanos = firstByte,
+        interimResponses = interimCount,
+        redirectTarget = redirect?.target,
+        redirectKind = redirect?.kind,
         failureStage = failure.stage,
         failureCode = failure.kind,
         failureMessage = failure.kind.userMessage(),
@@ -249,11 +276,50 @@ class NetworkProbe(
         output.flush()
     }
 
+    private data class ResponseHead(
+        val response: HttpResponse,
+        val location: String?,
+    )
+
+    private data class FinalHead(
+        val response: HttpResponse,
+        val location: String?,
+        val interimCount: Int,
+    )
+
+    /**
+     * Reads response heads until a final (non-1xx) status arrives.
+     *
+     * RFC 9110 permits any number of interim 1xx responses before the final status, so the
+     * head reader must not treat `103 Early Hints` or `100 Continue` as the measurement's
+     * result. `101 Switching Protocols` is rejected: Pulse never upgrades the connection, and
+     * a 101 means the server will not answer the GET with an HTTP response. The interim count
+     * is bounded so a server cannot hold the probe in 1xx chatter until the overall deadline.
+     */
+    private fun readFinalResponseHead(
+        input: InputStream,
+        config: ProbeConfig,
+        onFirstByte: () -> Unit,
+    ): FinalHead {
+        var interim = 0
+        while (true) {
+            val head = readResponseHead(input, config, onFirstByte)
+            if (head.response.code !in 100..199) return FinalHead(head.response, head.location, interim)
+            if (head.response.code == 101) {
+                throw HttpProtocolException("Unexpected 101 Switching Protocols")
+            }
+            if (interim >= config.maxInterimResponses) {
+                throw HttpProtocolException("Too many interim 1xx responses")
+            }
+            interim += 1
+        }
+    }
+
     private fun readResponseHead(
         input: InputStream,
         config: ProbeConfig,
         onFirstByte: () -> Unit,
-    ): HttpResponse {
+    ): ResponseHead {
         val head = readHead(input, config.maxHeaderBytes, onFirstByte)
         val lines = head.split("\r\n")
         val status = lines.firstOrNull().orEmpty()
@@ -262,6 +328,7 @@ class NetworkProbe(
         val response = HttpResponse(match.groupValues[1], match.groupValues[2].toInt())
         val contentLengths = mutableSetOf<Long>()
         var chunked = false
+        var location: String? = null
         for (line in lines.drop(1)) {
             if (line.isEmpty()) continue
             val separator = line.indexOf(':')
@@ -278,15 +345,18 @@ class NetworkProbe(
                     if (codings != listOf("chunked")) throw HttpProtocolException("Unsupported Transfer-Encoding")
                     chunked = true
                 }
+                // A repeated Location is ambiguous; the first value is used and duplicates are
+                // not concatenated, so a second header cannot rewrite the recorded boundary.
+                name.equals("location", true) && location == null -> location = value
             }
         }
         if (chunked && contentLengths.isNotEmpty()) throw HttpProtocolException("Ambiguous message framing")
         if (contentLengths.size > 1) throw HttpProtocolException("Conflicting Content-Length")
-        return response.copy(
+        return ResponseHead(response.copy(
             contentLength = contentLengths.singleOrNull(),
             chunked = chunked,
             hasBody = response.code !in 100..199 && response.code != 204 && response.code != 304,
-        )
+        ), location)
     }
 
     private fun readHead(input: InputStream, limit: Int, onFirstByte: () -> Unit): String {

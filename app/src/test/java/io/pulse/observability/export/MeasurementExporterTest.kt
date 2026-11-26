@@ -34,10 +34,10 @@ class MeasurementExporterTest {
         val lines = output.toString(Charsets.UTF_8).lines().filter { it.isNotEmpty() }
         val envelope = JSONObject(lines[0])
         assertEquals("pulse.measurements", envelope.getString("format"))
-        assertEquals(1, envelope.getInt("version"))
+        assertEquals(EXPORT_VERSION, envelope.getInt("version"))
         assertEquals("1970-01-01T00:00:00Z", envelope.getString("exported_at"))
         val record = JSONObject(lines[1])
-        assertEquals(1, record.getInt("schema_version"))
+        assertEquals(EXPORT_VERSION, record.getInt("schema_version"))
         assertEquals(42, record.getLong("id"))
         assertEquals(measurement.target, record.getString("target"))
         assertEquals(10, record.getLong("dns_ns"))
@@ -61,6 +61,34 @@ class MeasurementExporterTest {
         org.junit.Assert.assertTrue(csv.contains("\"https://example.com/a?b=\"\"quoted\"\",x=1\""))
         org.junit.Assert.assertTrue(csv.contains("\"line one\nline \"\"two\"\", failed\""))
         assertFalse(csv.contains(EXPORT_VERSION.toString() + "," + EXPORT_VERSION.toString()))
+    }
+
+    @Test fun `redirect boundary exports at schema 2 with the sanitized origin`() {
+        val redirected = measurement.copy(
+            // Comma-free target keeps the naive CSV column split below meaningful; the
+            // dedicated escaping test covers quoted fields.
+            target = "http://127.0.0.1/",
+            responseCode = 301,
+            redirectKind = io.pulse.observability.probe.RedirectKind.DOWNGRADE,
+            redirectTarget = "http://insecure.example",
+            interimResponses = 1,
+        )
+        val json = ByteArrayOutputStream()
+        MeasurementExporter("0.1.0").export(listOf(redirected), ExportFormat.JSONL, json, 0)
+        val record = JSONObject(json.toString(Charsets.UTF_8).lines()[1])
+        assertEquals(EXPORT_VERSION, record.getInt("schema_version"))
+        assertEquals("http://insecure.example", record.getString("redirect_target"))
+        assertEquals("downgrade", record.getString("redirect_kind"))
+        assertEquals(1, record.getInt("interim_responses"))
+
+        val csv = ByteArrayOutputStream()
+        MeasurementExporter("0.1.0").export(listOf(redirected), ExportFormat.CSV, csv, 0)
+        val lines = csv.toString(Charsets.UTF_8).split("\r\n")
+        val columns = lines[0].split(",")
+        val values = lines[1].split(",")
+        assertEquals("redirect_target", columns[columns.indexOf("redirect_kind") - 1])
+        assertEquals("http://insecure.example", values[columns.indexOf("redirect_target")])
+        assertEquals("downgrade", values[columns.indexOf("redirect_kind")])
     }
 
     @Test fun `empty exports retain schema`() {

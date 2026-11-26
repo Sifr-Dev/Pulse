@@ -58,6 +58,59 @@ class AndroidRealProbeTest {
         thread.join(1_000)
     }
 
+    @Test fun interim103OnDeviceIsNotReportedAsFinalStatus() = runBlocking {
+        // Android's runtime must reach the same conclusion as the JVM suite: the final status
+        // wins and the interim count is recorded. This runs on the device stack, not the JVM.
+        val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
+        val thread = Thread {
+            try {
+                server.accept().use { socket ->
+                    val reader = socket.getInputStream().bufferedReader()
+                    while (reader.readLine()?.isNotEmpty() == true) { }
+                    val output = socket.getOutputStream()
+                    output.write("HTTP/1.1 103 Early Hints\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok".toByteArray())
+                    output.flush()
+                }
+            } catch (_: Exception) { }
+        }.apply { isDaemon = true; start() }
+        val result = NetworkProbe(HostResolver { listOf(InetAddress.getByName("127.0.0.1")) })
+            .measure(TargetParser.parse("http://127.0.0.1:" + server.localPort + "/"))
+        val measurement = (result as ProbeResult.Success).measurement
+        assertEquals(200, measurement.responseCode)
+        assertEquals(1, measurement.interimResponses)
+        assertEquals(2L, measurement.bodyBytes)
+        server.close()
+        thread.join(1_000)
+    }
+
+    @Test fun crossOriginRedirectIsRecordedWithoutBeingFollowed() = runBlocking {
+        // Plain HTTP keeps this a real end-to-end measurement on device; an HTTPS origin would
+        // stop at TLS_CERTIFICATE because the loopback fixture is not platform-trusted.
+        val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
+        val thread = Thread {
+            try {
+                server.accept().use { socket ->
+                    val reader = socket.getInputStream().bufferedReader()
+                    while (reader.readLine()?.isNotEmpty() == true) { }
+                    socket.getOutputStream().write(
+                        ("HTTP/1.1 302 Found\r\nLocation: https://secure.example/next?token=x\r\n" +
+                            "Content-Length: 0\r\n\r\n").toByteArray(),
+                    )
+                    socket.getOutputStream().flush()
+                }
+            } catch (_: Exception) { }
+        }.apply { isDaemon = true; start() }
+        val result = NetworkProbe(HostResolver { listOf(InetAddress.getByName("127.0.0.1")) })
+            .measure(TargetParser.parse("http://127.0.0.1:" + server.localPort + "/start"))
+        val measurement = (result as ProbeResult.Success).measurement
+        assertEquals(302, measurement.responseCode)
+        assertEquals(RedirectKind.UPGRADE, measurement.redirectKind)
+        // Only the origin is stored: no path, no query token.
+        assertEquals("https://secure.example", measurement.redirectTarget)
+        server.close()
+        thread.join(1_000)
+    }
+
     @Test fun cancellationClosesBlockedSocketWithoutMeasurement() = runBlocking {
         val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
         val thread = Thread {

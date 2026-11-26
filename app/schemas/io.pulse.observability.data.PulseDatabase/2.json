@@ -1,0 +1,150 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "16334ffb6949b0c0db880509d6fc64da",
+    "entities": [
+      {
+        "tableName": "measurements",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `target` TEXT NOT NULL, `startedAtEpochMillis` INTEGER NOT NULL, `outcome` TEXT NOT NULL, `totalNanos` INTEGER NOT NULL, `dnsNanos` INTEGER, `tcpNanos` INTEGER, `tlsNanos` INTEGER, `headersNanos` INTEGER, `bodyNanos` INTEGER, `resolvedAddress` TEXT, `responseCode` INTEGER, `httpVersion` TEXT, `tlsProtocol` TEXT, `tlsCipherSuite` TEXT, `bodyBytes` INTEGER, `firstResponseByteNanos` INTEGER, `interimResponses` INTEGER, `redirectTarget` TEXT, `redirectKind` TEXT, `failureStage` TEXT, `failureCode` TEXT, `failureMessage` TEXT, `failedStageDurationNanos` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "target",
+            "columnName": "target",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAtEpochMillis",
+            "columnName": "startedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outcome",
+            "columnName": "outcome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalNanos",
+            "columnName": "totalNanos",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dnsNanos",
+            "columnName": "dnsNanos",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "tcpNanos",
+            "columnName": "tcpNanos",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "tlsNanos",
+            "columnName": "tlsNanos",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "headersNanos",
+            "columnName": "headersNanos",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "bodyNanos",
+            "columnName": "bodyNanos",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "resolvedAddress",
+            "columnName": "resolvedAddress",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "responseCode",
+            "columnName": "responseCode",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "httpVersion",
+            "columnName": "httpVersion",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "tlsProtocol",
+            "columnName": "tlsProtocol",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "tlsCipherSuite",
+            "columnName": "tlsCipherSuite",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bodyBytes",
+            "columnName": "bodyBytes",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "firstResponseByteNanos",
+            "columnName": "firstResponseByteNanos",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "interimResponses",
+            "columnName": "interimResponses",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "redirectTarget",
+            "columnName": "redirectTarget",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "redirectKind",
+            "columnName": "redirectKind",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "failureStage",
+            "columnName": "failureStage",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "failureCode",
+            "columnName": "failureCode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "failureMessage",
+            "columnName": "failureMessage",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "failedStageDurationNanos",
+            "columnName": "failedStageDurationNanos",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '16334ffb6949b0c0db880509d6fc64da')"
+    ]
+  }
+}

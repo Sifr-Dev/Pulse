@@ -8,7 +8,11 @@ import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 
-const val EXPORT_VERSION = 1
+/**
+ * Schema 2 adds `interim_responses`, `redirect_target`, and `redirect_kind`. Version 1 readers
+ * see a strictly additive change: every pre-existing field keeps its name, type, and meaning.
+ */
+const val EXPORT_VERSION = 2
 
 enum class ExportFormat(val extension: String, val mimeType: String) {
     JSONL("jsonl", "application/x-ndjson"),
@@ -57,6 +61,9 @@ class MeasurementExporter(private val appVersion: String) {
                 "tls_cipher_suite" to measurement.tlsCipherSuite,
                 "body_bytes" to measurement.bodyBytes,
                 "first_response_byte_ns" to measurement.firstResponseByteNanos,
+                "interim_responses" to measurement.interimResponses,
+                "redirect_target" to measurement.redirectTarget,
+                "redirect_kind" to measurement.redirectKind?.wireName,
                 "failure_stage" to measurement.failureStage?.wireName,
                 "failure_code" to measurement.failureCode?.wireName,
                 "failure_message" to measurement.failureMessage,
@@ -74,7 +81,8 @@ class MeasurementExporter(private val appVersion: String) {
             "schema_version", "record_id", "target", "started_at_epoch_ms", "outcome", "total_ns",
             "dns_ns", "tcp_ns", "tls_ns", "http_headers_ns", "http_body_ns", "resolved_address",
             "response_code", "http_version", "tls_protocol", "tls_cipher_suite", "body_bytes",
-            "first_response_byte_ns", "failure_stage", "failure_code", "failure_message", "failed_stage_duration_ns",
+            "first_response_byte_ns", "interim_responses", "redirect_target", "redirect_kind",
+            "failure_stage", "failure_code", "failure_message", "failed_stage_duration_ns",
         )
         writer.write(columns.joinToString(","))
         writer.write("\r\n")
@@ -91,6 +99,8 @@ class MeasurementExporter(private val appVersion: String) {
                 measurement.httpVersion.orEmpty(), measurement.tlsProtocol.orEmpty(),
                 measurement.tlsCipherSuite.orEmpty(), measurement.bodyBytes?.toString().orEmpty(),
                 measurement.firstResponseByteNanos?.toString().orEmpty(),
+                measurement.interimResponses?.toString().orEmpty(),
+                measurement.redirectTarget.orEmpty(), measurement.redirectKind?.wireName.orEmpty(),
                 measurement.failureStage?.wireName.orEmpty(), measurement.failureCode?.wireName.orEmpty(),
                 measurement.failureMessage.orEmpty(), measurement.failedStageDurationNanos?.toString().orEmpty(),
             )

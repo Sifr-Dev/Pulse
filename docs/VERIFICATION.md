@@ -101,6 +101,68 @@ the host and reached via the emulator alias `10.0.2.2:8901`. The UI rendered
 address. This is a real DNS/TCP/HTTP measurement path executed by the release
 binary, not sample data.
 
+## Diagnostics-reliability change (2026-11-26)
+
+Branch `product/diagnostics-reliability`. Two real defects were found by reading the
+implementation against its own documented contract, then fixed with loopback fixtures.
+
+### Defect 1 - interim 1xx recorded as the final status
+
+`readResponseHead` treated the first head as final. A server sending
+`103 Early Hints` (or `100 Continue`) before its `200 OK` therefore produced a
+completed **successful** measurement with `responseCode = 103` and
+`bodyBytes = 0`, because `hasBody` is false for 1xx. The recorded status was not
+the status the server finally answered with. `docs/ARCHITECTURE.md` claimed 1xx
+was "rejected as unsupported protocol input"; the code accepted it.
+
+Fix: interim 1xx heads are consumed until a final status arrives, the count is
+persisted as `interimResponses`, and the header stage timing spans the whole
+interim exchange. `101 Switching Protocols`, more than
+`ProbeConfig.maxInterimResponses` (8) interim heads, and interim-only-then-EOF
+are typed failures instead of successes.
+
+### Defect 2 - redirect security boundary was invisible
+
+Redirects are intentionally not followed, but nothing recorded what the server
+pointed at. A `301` to `http://...` from an `https://` origin - a TLS
+downgrade - was stored as an ordinary success with no indication of the
+crossing.
+
+Fix: `RedirectClassifier` reduces the first `Location` header to
+`scheme://authority` and classifies the crossing as `same_origin`,
+`cross_origin`, `upgrade`, `downgrade`, or `unresolved`. Path, query, fragment,
+and userinfo are dropped, so redirect tokens and credentials are never
+persisted. Classification happens at header time, so a 3xx whose body read
+fails still reports where it pointed.
+
+### Tests added
+
+`InterimResponseTest` (JVM, real loopback `ServerSocket`): 103 then 200, 100
+then 204, three interims counted in order, zero interims reported as 0 rather
+than null, 101 rejected as `HTTP_PROTOCOL`, 12 interims rejected, interim-only
+EOF as `HTTP_FAILURE`, and header timing covering a 150 ms interim wait
+(injecting `System.nanoTime()` because the JVM unit-test stub for
+`android.os.SystemClock` returns 0 for every call).
+
+`RedirectBoundaryTest` (JVM, real loopback `ServerSocket`): same-origin
+relative `Location`, cross-origin with a token in the query (asserting the
+token never reaches `redirectTarget`), https-to-http downgrade, https-to-https
+cross-origin, userinfo rejection, relative resolution, non-default ports,
+non-HTTP(S)/unparsable/CRLF-injecting locations, non-redirect statuses, a 3xx
+without `Location`, a redirect recorded through a body failure, and repeated
+`Location` headers not rewriting the boundary.
+
+`DatabaseMigrationTest` (instrumented): opens a genuine schema-1 file, runs the
+shipped `MIGRATION_1_2`, and lets Room's own `runMigrationsAndValidate` compare
+the result against the exported schema 2; asserts pre-existing rows keep null
+for the new columns rather than a backfilled value.
+
+`AndroidRealProbeTest` gained device-runtime coverage of the 103-then-200 path
+and of a cross-origin redirect recorded without being followed.
+
+`MeasurementExporterTest` gained a schema-2 assertion that a redirect exports
+its sanitized origin in both JSONL and CSV.
+
 ## Not yet verified (explicit)
 - Release signing: no release key was provided. Release artifacts require the
   owner's keystore; no signing identity is fabricated.

@@ -68,6 +68,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    sourceSets {
+        // MigrationTestHelper reads exported schemas from the test APK's assets. Without this
+        // the migration test fails with "Cannot find the schema file in the assets folder"
+        // instead of validating the real migration.
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
+
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
@@ -104,6 +111,26 @@ configurations.configureEach {
             else -> null
         }
         if (version != null) useVersion(version)
+    }
+}
+
+configurations.configureEach {
+    // room-testing 2.8.5 ships room-migration compiled against kotlinx-serialization 1.8.1,
+    // while the app's runtime graph pins 1.7.3 through the Compose/lifecycle BOM. Consistent
+    // resolution carries that 1.7.3 pin into the androidTest classpath, where the older
+    // kotlinx-serialization-core then fails with AbstractMethodError inside
+    // MigrationTestHelper's schema parsing. Serialization is not used by app code at all, so
+    // the fix is scoped to the instrumented-test classpath instead of moving the app's runtime
+    // dependency graph.
+    if (name.contains("AndroidTest")) {
+        resolutionStrategy {
+            force(
+                "org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1",
+                "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.8.1",
+                "org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1",
+                "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.8.1",
+            )
+        }
     }
 }
 
