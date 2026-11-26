@@ -11,12 +11,15 @@ data class ProbeConfig(
     val totalTimeoutMillis: Long = 45_000,
     val maxBodyBytes: Int = 65_536,
     val maxHeaderBytes: Int = 32_768,
+    /** RFC 9110 allows interim 1xx responses; this bounds how many are consumed for one request. */
+    val maxInterimResponses: Int = 8,
 ) {
     init {
         require(dnsTimeoutMillis > 0 && connectTimeoutMillis > 0 && tlsTimeoutMillis > 0)
         require(headersTimeoutMillis > 0 && bodyTimeoutMillis > 0 && totalTimeoutMillis > 0)
         require(maxBodyBytes in 1..1_048_576) { "Body limit must be between 1 byte and 1 MiB" }
         require(maxHeaderBytes in 1_024..65_536) { "Header limit must be between 1 and 64 KiB" }
+        require(maxInterimResponses in 0..64) { "Interim response limit must be between 0 and 64" }
     }
 }
 
@@ -47,6 +50,31 @@ enum class FailureKind(val wireName: String) {
     TOTAL_TIMEOUT("total_timeout"),
 }
 
+/**
+ * The security shape of an unfollowed redirect, computed from the response's `Location`
+ * header and the request origin. Redirects are never followed; this only classifies the
+ * boundary the measurement stopped at.
+ */
+enum class RedirectKind(val wireName: String) {
+    SAME_ORIGIN("same_origin"),
+    CROSS_ORIGIN("cross_origin"),
+    /** https -> http: the location is unencrypted. */
+    DOWNGRADE("downgrade"),
+    /** http -> https: the location upgrades transport. */
+    UPGRADE("upgrade"),
+    /** Relative, non-HTTP(S), or unparsable location; no safe origin can be recorded. */
+    UNRESOLVED("unresolved"),
+}
+
+/**
+ * A redirect destination reduced to `scheme://authority`. Path, query, fragment, and any
+ * userinfo are deliberately dropped so redirect tokens or credentials are never persisted.
+ */
+data class Redirect(
+    val target: String?,
+    val kind: RedirectKind,
+)
+
 enum class Outcome { SUCCESS, FAILURE }
 
 /** Persistable metadata only: no response body, cookies, authorization, or socket streams. */
@@ -64,6 +92,10 @@ data class Measurement(
     val tlsCipherSuite: String? = null,
     val bodyBytes: Long? = null,
     val firstResponseByteNanos: Long? = null,
+    /** Number of interim 1xx responses consumed before the final status. */
+    val interimResponses: Int? = null,
+    val redirectTarget: String? = null,
+    val redirectKind: RedirectKind? = null,
     val failureStage: StageName? = null,
     val failureCode: FailureKind? = null,
     val failureMessage: String? = null,

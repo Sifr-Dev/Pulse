@@ -5,6 +5,7 @@ import androidx.room.PrimaryKey
 import io.pulse.observability.probe.FailureKind
 import io.pulse.observability.probe.Measurement
 import io.pulse.observability.probe.Outcome
+import io.pulse.observability.probe.RedirectKind
 import io.pulse.observability.probe.StageName
 import io.pulse.observability.probe.StageTiming
 
@@ -27,6 +28,9 @@ data class MeasurementEntity(
     val tlsCipherSuite: String?,
     val bodyBytes: Long?,
     val firstResponseByteNanos: Long?,
+    val interimResponses: Int? = null,
+    val redirectTarget: String? = null,
+    val redirectKind: RedirectKind? = null,
     val failureStage: StageName?,
     val failureCode: FailureKind?,
     val failureMessage: String?,
@@ -51,6 +55,9 @@ fun Measurement.toEntity(): MeasurementEntity = MeasurementEntity(
     tlsCipherSuite = tlsCipherSuite,
     bodyBytes = bodyBytes,
     firstResponseByteNanos = firstResponseByteNanos,
+    interimResponses = interimResponses,
+    redirectTarget = redirectTarget,
+    redirectKind = redirectKind,
     failureStage = failureStage,
     failureCode = failureCode,
     failureMessage = failureMessage,
@@ -77,6 +84,9 @@ fun MeasurementEntity.toMeasurement(): Measurement = Measurement(
     tlsCipherSuite = tlsCipherSuite,
     bodyBytes = bodyBytes,
     firstResponseByteNanos = firstResponseByteNanos,
+    interimResponses = interimResponses,
+    redirectTarget = redirectTarget,
+    redirectKind = redirectKind,
     failureStage = failureStage,
     failureCode = failureCode,
     failureMessage = failureMessage,

@@ -64,6 +64,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.pulse.observability.export.ExportFormat
 import io.pulse.observability.probe.Measurement
 import io.pulse.observability.probe.Outcome
+import io.pulse.observability.probe.RedirectKind
 import io.pulse.observability.probe.StageName
 import io.pulse.observability.probe.formatMilliseconds
 import java.time.Instant
@@ -330,6 +331,21 @@ private fun MeasurementCard(measurement: Measurement, compact: Boolean = false) 
                 Text("Stage: ${measurement.failureStage?.wireName} · ${measurement.failureCode?.wireName}",
                     style = MaterialTheme.typography.bodySmall)
             }
+            measurement.redirectKind?.let { kind ->
+                val boundary = redirectBoundaryLabel(kind)
+                Text(
+                    boundary,
+                    color = if (kind == RedirectKind.DOWNGRADE) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (kind == RedirectKind.DOWNGRADE) FontWeight.SemiBold else null,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag(if (compact) "history_redirect_${measurement.id}" else "result_redirect"),
+                )
+                measurement.redirectTarget?.let {
+                    Text("Redirect not followed · $it", style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
             if (expanded) {
                 HorizontalDivider()
                 StageName.entries.forEach { stage ->
@@ -338,12 +354,26 @@ private fun MeasurementCard(measurement: Measurement, compact: Boolean = false) 
                 measurement.resolvedAddress?.let { DurationRow("resolved address", it) }
                 measurement.firstResponseByteNanos?.let { DurationRow("first response byte", it.formatMilliseconds()) }
                 measurement.httpVersion?.let { DurationRow("protocol", "HTTP/$it") }
+                measurement.interimResponses?.takeIf { it > 0 }?.let { DurationRow("interim 1xx skipped", it.toString()) }
+                measurement.redirectKind?.let { DurationRow("redirect boundary", it.wireName) }
                 measurement.tlsProtocol?.let { DurationRow("TLS protocol", it) }
                 measurement.tlsCipherSuite?.let { DurationRow("TLS cipher", it) }
                 measurement.bodyBytes?.let { DurationRow("response bytes discarded", it.toString()) }
             }
         }
     }
+}
+
+/**
+ * A redirect is never followed, so the card states the boundary instead of implying that the
+ * final destination was measured. A downgrade is the only case rendered as an error.
+ */
+internal fun redirectBoundaryLabel(kind: RedirectKind): String = when (kind) {
+    RedirectKind.SAME_ORIGIN -> "Redirect to the same origin was not followed"
+    RedirectKind.CROSS_ORIGIN -> "Redirect to a different origin was not followed"
+    RedirectKind.DOWNGRADE -> "Redirect would downgrade HTTPS to unencrypted HTTP"
+    RedirectKind.UPGRADE -> "Redirect would upgrade HTTP to HTTPS"
+    RedirectKind.UNRESOLVED -> "Redirect location could not be safely classified"
 }
 
 @Composable

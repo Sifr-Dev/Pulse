@@ -14,7 +14,9 @@ private val Context.settingsStore by preferencesDataStore(name = "pulse_settings
 
 class PulseApplication : Application() {
     val database: PulseDatabase by lazy {
-        Room.databaseBuilder(this, PulseDatabase::class.java, "pulse.db").build()
+        Room.databaseBuilder(this, PulseDatabase::class.java, "pulse.db")
+            .addMigrations(PulseDatabase.MIGRATION_1_2)
+            .build()
     }
     val history: HistoryRepository by lazy { HistoryRepository(database.measurements()) }
     val settings: SettingsRepository by lazy { SettingsRepository(settingsStore) }
