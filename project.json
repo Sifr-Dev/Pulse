@@ -1,9 +1,13 @@
 {
-  "name": "Pulse",
-  "description": "Audio / telemetry pulse",
+  "name": "Resonance",
+  "displayName": "Resonance",
+  "repo": "Pulse",
+  "description": "On-demand Android HTTP(S) network measurement app",
+  "summary": "Kotlin/Compose app that performs real DNS, TCP, TLS and bounded HTTP measurements, persists local history in Room and exports versioned JSONL or CSV.",
   "stack": [
     "gradle"
   ],
   "status": "experimental",
-  "primary_language": "Kotlin"
+  "primary_language": "Kotlin",
+  "license": "MIT"
 }
